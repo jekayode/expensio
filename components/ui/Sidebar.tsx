@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CreditCard, PieChart, Settings, Wallet, Folder } from "lucide-react";
+import { LayoutDashboard, CreditCard, PieChart, Settings, Wallet, Folder, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -11,6 +11,7 @@ const navigation = [
     { name: "Budget", href: "/budget", icon: PieChart },
     { name: "Accounts", href: "/accounts", icon: Wallet },
     { name: "Projects", href: "/projects", icon: Folder },
+    { name: "Receipts", href: "/receipts", icon: Receipt },
 ];
 
 export function Sidebar() {
