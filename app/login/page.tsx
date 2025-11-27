@@ -34,6 +34,7 @@ export default function LoginPage() {
                     password,
                 });
                 if (error) throw error;
+                router.refresh();
                 router.push("/");
             }
         } catch (err: any) {
