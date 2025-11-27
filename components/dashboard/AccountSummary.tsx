@@ -1,32 +1,125 @@
-import { ArrowUpRight, ArrowDownRight, DollarSign } from "lucide-react";
+"use client";
+
+import { ArrowUpRight, ArrowDownRight, DollarSign, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export function AccountSummary() {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState({
+        totalBalance: 0,
+        monthlyIncome: 0,
+        monthlyExpenses: 0,
+    });
+
+    useEffect(() => {
+        const fetchData = async () => {
+            if (!user) return;
+
+            try {
+                // Fetch Total Balance (Sum of all accounts)
+                const { data: accounts, error: accountsError } = await supabase
+                    .from('accounts')
+                    .select('balance')
+                    .eq('user_id', user.id);
+
+                if (accountsError) throw accountsError;
+
+                const totalBalance = accounts?.reduce((sum, acc) => sum + acc.balance, 0) || 0;
+
+                // Fetch Monthly Income and Expenses
+                const now = new Date();
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+                const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+
+                const { data: transactions, error: transactionsError } = await supabase
+                    .from('transactions')
+                    .select('amount, type')
+                    .eq('user_id', user.id)
+                    .gte('date', startOfMonth)
+                    .lte('date', endOfMonth);
+
+                if (transactionsError) throw transactionsError;
+
+                const monthlyIncome = transactions
+                    ?.filter(t => t.type === 'income')
+                    .reduce((sum, t) => sum + t.amount, 0) || 0;
+
+                const monthlyExpenses = transactions
+                    ?.filter(t => t.type === 'expense')
+                    .reduce((sum, t) => sum + Math.abs(t.amount), 0) || 0;
+
+                setStats({
+                    totalBalance,
+                    monthlyIncome,
+                    monthlyExpenses,
+                });
+            } catch (error) {
+                console.error("Error fetching dashboard stats:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+
+        // Realtime subscription for updates
+        const accountsChannel = supabase
+            .channel('dashboard_accounts')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'accounts' }, fetchData)
+            .subscribe();
+
+        const transactionsChannel = supabase
+            .channel('dashboard_transactions')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, fetchData)
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(accountsChannel);
+            supabase.removeChannel(transactionsChannel);
+        };
+    }, [user]);
+
+    if (loading) {
+        return (
+            <div className="grid gap-4 md:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                    <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 h-[116px] flex items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
     return (
         <div className="grid gap-4 md:grid-cols-3">
             <Card
                 title="Total Balance"
-                amount="₦12,345.00"
+                amount={`₦${stats.totalBalance.toLocaleString()}`}
                 icon={DollarSign}
-                trend="+2.5%"
+                trend="+0%" // Placeholder for now, requires historical data
                 trendUp={true}
                 className="bg-zinc-900 border-zinc-800"
             />
             <Card
                 title="Monthly Income"
-                amount="₦4,500.00"
+                amount={`₦${stats.monthlyIncome.toLocaleString()}`}
                 icon={ArrowUpRight}
-                trend="+12%"
+                trend="This Month"
                 trendUp={true}
                 className="bg-zinc-900 border-zinc-800"
                 iconColor="text-emerald-500"
             />
             <Card
                 title="Monthly Expenses"
-                amount="₦2,150.00"
+                amount={`₦${stats.monthlyExpenses.toLocaleString()}`}
                 icon={ArrowDownRight}
-                trend="-5%"
-                trendUp={true} // Expenses going down is good, so green? Or just visual? Let's say green for good.
+                trend="This Month"
+                trendUp={false}
                 className="bg-zinc-900 border-zinc-800"
                 iconColor="text-rose-500"
             />
@@ -65,7 +158,7 @@ function Card({
                         trendUp ? "text-emerald-500" : "text-rose-500"
                     )}
                 >
-                    {trend} from last month
+                    {trend}
                 </div>
             </div>
         </div>
